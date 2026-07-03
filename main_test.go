@@ -194,6 +194,124 @@ func TestGenerateFromInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestGenerateFromExistingPreservesAllSchemaFields(t *testing.T) {
+	// Regression test for v0.1.0 verifier finding: --from round-trip
+	// silently dropped created_at and voice because the Card struct
+	// didn't model them. Every field defined in the v1 schema must
+	// survive a --from round-trip.
+	src := `{
+        "version": "1.0",
+        "agent": {"name":"T","handle":"@t@t.com","description":"x"},
+        "owner": {"name":"O"},
+        "created_at": "2025-01-15T10:00:00Z",
+        "updated_at": "2025-06-01T00:00:00Z",
+        "voice": {
+            "name": "Kai",
+            "style": "warm",
+            "preferredTTS": "elevenlabs",
+            "voiceId": "abc",
+            "sampleUrl": "https://x/y.mp3"
+        }
+    }`
+	dir := t.TempDir()
+	srcPath := filepath.Join(dir, "src.json")
+	if err := os.WriteFile(srcPath, []byte(src), 0o644); err != nil {
+		t.Fatalf("write src: %v", err)
+	}
+
+	got, err := Generate(context.Background(), Options{
+		From: srcPath,
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var c Card
+	if err := json.Unmarshal(got, &c); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if c.CreatedAt != "2025-01-15T10:00:00Z" {
+		t.Errorf("CreatedAt lost on round-trip: got %q", c.CreatedAt)
+	}
+	if c.UpdatedAt != "2025-06-01T00:00:00Z" {
+		t.Errorf("UpdatedAt overwritten without --now: got %q", c.UpdatedAt)
+	}
+	if c.Voice == nil {
+		t.Fatalf("Voice lost on round-trip: nil")
+	}
+	if c.Voice.Name != "Kai" {
+		t.Errorf("Voice.Name: got %q", c.Voice.Name)
+	}
+	if c.Voice.SampleURL != "https://x/y.mp3" {
+		t.Errorf("Voice.SampleURL: got %q", c.Voice.SampleURL)
+	}
+}
+
+func TestGenerateVerifiedByDedupe(t *testing.T) {
+	// Regression test for v0.1.0 verifier finding: --verified-by did
+	// not dedupe against existing values, producing duplicate entries
+	// after a --from round-trip.
+	dir := t.TempDir()
+	src := filepath.Join(dir, "base.json")
+	if err := os.WriteFile(src, []byte(`{
+        "version":"1.0","agent":{"name":"T","handle":"@t@t.com","description":"x"},"owner":{"name":"O"},
+        "trust":{"level":"verified","verified_by":["foragents.dev"]}
+    }`), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := Generate(context.Background(), Options{
+		From:            src,
+		TrustVerifiedBy: []string{"foragents.dev", "new-registry.example.com", "foragents.dev"},
+	})
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	var c Card
+	if err := json.Unmarshal(got, &c); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if c.Trust == nil || len(c.Trust.VerifiedBy) != 2 {
+		t.Fatalf("VerifiedBy: got %v, want exactly 2 entries", c.Trust.VerifiedBy)
+	}
+	want := map[string]bool{"foragents.dev": true, "new-registry.example.com": true}
+	for _, v := range c.Trust.VerifiedBy {
+		if !want[v] {
+			t.Errorf("unexpected VerifiedBy entry: %q", v)
+		}
+	}
+}
+
+func TestRunCLIVersionIgnoresUnknownFlags(t *testing.T) {
+	// Regression test for v0.1.0 verifier finding: --version should
+	// be a pre-parse short-circuit, matching Go's stdlib convention.
+	code := runCLI([]string{"--version", "--bogus-flag"}, &nullFile{}, &nullFile{})
+	if code != 0 {
+		t.Errorf("expected exit 0 for --version even with unknown flags, got %d", code)
+	}
+}
+
+func TestRunCLIStdoutShowsNextSteps(t *testing.T) {
+	out := &captureBuf{}
+	errBuf := &captureBuf{}
+	code := runCLI([]string{
+		"--name", "Test",
+		"--handle", "@t@t.com",
+		"--description", "x",
+		"--owner-name", "O",
+		"--card-url", "https://example.com/.well-known/agent.json",
+		"--output", "-",
+	}, out, errBuf)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stderr: %s)", code, errBuf.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Next steps:") {
+		t.Errorf("stdout missing 'Next steps:' hints: %q", got)
+	}
+	if !strings.Contains(got, "https://example.com/.well-known/agent.json") {
+		t.Errorf("stdout missing card URL hint: %q", got)
+	}
+}
+
 func TestGenerateOwnsCardWithoutFlagsPreservesEverything(t *testing.T) {
 	// When no flags are set and no --from is given, Generate should
 	// fail because the required fields are missing. Verify the error

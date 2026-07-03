@@ -49,6 +49,14 @@ type FlagCapturer func(name string) (string, bool)
 // Card is the shape we build up in memory before writing. It mirrors
 // the schema's top-level fields so callers can mix-and-match what
 // they set vs. what they leave to defaults.
+// Card is the shape we build up in memory before writing. It mirrors
+// the schema's top-level fields so callers can mix-and-match what
+// they set vs. what they leave to defaults.
+//
+// IMPORTANT: every field defined in the v1 schema must be modeled
+// here, otherwise a `--from` round-trip silently drops it. The
+// verifier pass on v0.1.0 caught this twice: created_at and voice
+// were unmodelled fields whose values vanished during overlay.
 type Card struct {
 	Version      string     `json:"version"`
 	Agent        Agent      `json:"agent"`
@@ -58,7 +66,9 @@ type Card struct {
 	Protocols    *Protocols `json:"protocols,omitempty"`
 	Endpoints    *Endpoints `json:"endpoints,omitempty"`
 	Trust        *Trust     `json:"trust,omitempty"`
+	Voice        *Voice     `json:"voice,omitempty"`
 	Links        *Links     `json:"links,omitempty"`
+	CreatedAt    string     `json:"created_at,omitempty"`
 	UpdatedAt    string     `json:"updated_at,omitempty"`
 }
 
@@ -101,6 +111,14 @@ type Trust struct {
 	Created      string   `json:"created,omitempty"`
 	VerifiedBy   []string `json:"verified_by,omitempty"`
 	Attestations []any    `json:"attestations,omitempty"`
+}
+
+type Voice struct {
+	Name         string `json:"name,omitempty"`
+	Style        string `json:"style,omitempty"`
+	PreferredTTS string `json:"preferredTTS,omitempty"`
+	VoiceID      string `json:"voiceId,omitempty"`
+	SampleURL    string `json:"sampleUrl,omitempty"`
 }
 
 type Links struct {
@@ -280,7 +298,22 @@ func Generate(ctx context.Context, opts Options) ([]byte, error) {
 			card.Trust.Level = opts.TrustLevel
 		}
 		if len(opts.TrustVerifiedBy) > 0 {
-			card.Trust.VerifiedBy = append(card.Trust.VerifiedBy, opts.TrustVerifiedBy...)
+			// Dedupe against existing entries (mirror the
+			// --capability pattern). Without this, repeating a
+			// --verified-by flag or re-applying the same value
+			// over an existing card produces duplicate entries
+			// that directories may render as separate badges.
+			seen := make(map[string]struct{}, len(card.Trust.VerifiedBy)+len(opts.TrustVerifiedBy))
+			for _, v := range card.Trust.VerifiedBy {
+				seen[v] = struct{}{}
+			}
+			for _, v := range opts.TrustVerifiedBy {
+				if _, dup := seen[v]; dup {
+					continue
+				}
+				card.Trust.VerifiedBy = append(card.Trust.VerifiedBy, v)
+				seen[v] = struct{}{}
+			}
 		}
 	}
 
@@ -356,6 +389,15 @@ func marshaledCard(c Card) []byte {
 // stdout and stderr are io.Writer rather than *os.File so tests can
 // inject capture buffers.
 func runCLI(args []string, stdout, stderr io.Writer) int {
+	// Pre-parse --version / -version so it works even alongside
+	// unknown flags (matches Go's stdlib convention).
+	for _, a := range args {
+		if a == "--version" || a == "-version" {
+			fmt.Fprintf(stdout, "agent-init %s\n", Version)
+			return 0
+		}
+	}
+
 	fs := flag.NewFlagSet("agent-init", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
@@ -404,18 +446,11 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 
 	fs.BoolVar(&opts.Now, "now", false, "always stamp updated_at to the current time, even when --from has one")
 
-	versionFlag := fs.Bool("version", false, "print version and exit")
-
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 4
-	}
-
-	if *versionFlag {
-		fmt.Fprintf(stdout, "agent-init %s\n", Version)
-		return 0
 	}
 
 	// Default output is ./agent.json unless explicitly '-'.
@@ -430,23 +465,37 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 		return 3
 	}
 
+	cardURL := jsonField(body, "endpoints", "card")
+
+	// emitHints writes the "Next steps" guidance. Always emitted on
+	// success so the user gets the same UX whether they wrote to a
+	// file or piped to stdout.
+	emitHints := func(writtenTo string) {
+		fmt.Fprintf(stdout, "wrote %d bytes to %s\n", len(body), writtenTo)
+		fmt.Fprintf(stdout, "  schema validation: PASS\n")
+		fmt.Fprintf(stdout, "\nNext steps:\n")
+		if writtenTo != "-" {
+			fmt.Fprintf(stdout, "  - Validate: agent-validate %s\n", writtenTo)
+		} else {
+			fmt.Fprintf(stdout, "  - Validate: agent-validate <this-output>\n")
+		}
+		if cardURL != "" {
+			fmt.Fprintf(stdout, "  - Host at: %s\n", cardURL)
+		} else {
+			fmt.Fprintf(stdout, "  - Host at: <your-domain>/.well-known/agent.json\n")
+		}
+	}
+
 	if opts.Output == "-" {
 		stdout.Write(body)
+		emitHints("-")
 		return 0
 	}
 	if err := os.WriteFile(opts.Output, body, 0o644); err != nil {
 		fmt.Fprintf(stderr, "error: could not write %s: %v\n", opts.Output, err)
 		return 3
 	}
-	fmt.Fprintf(stdout, "wrote %d bytes to %s\n", len(body), opts.Output)
-	fmt.Fprintf(stdout, "  schema validation: PASS\n")
-	fmt.Fprintf(stdout, "\nNext steps:\n")
-	fmt.Fprintf(stdout, "  - Validate: agent-validate %s\n", opts.Output)
-	if cardURL, _ := jsonField(body, "endpoints", "card"); cardURL != "" {
-		fmt.Fprintf(stdout, "  - Host at: %s\n", cardURL)
-	} else {
-		fmt.Fprintf(stdout, "  - Host at: <your-domain>/.well-known/agent.json\n")
-	}
+	emitHints(opts.Output)
 	return 0
 }
 
@@ -455,20 +504,24 @@ func main() {
 }
 
 // jsonField reads a nested string field from raw JSON. Returns ""
-// if the path is missing or wrong type.
-func jsonField(body []byte, keys ...string) (string, error) {
+// if the path is missing, wrong type, or the body is not valid JSON.
+// body should already be valid JSON (caller's responsibility); an
+// unmarshal failure here is treated as "field not present" rather
+// than an error because the only call site passes output we just
+// marshaled ourselves.
+func jsonField(body []byte, keys ...string) string {
 	var v any
 	if err := json.Unmarshal(body, &v); err != nil {
-		return "", err
+		return ""
 	}
 	cur := v
 	for _, k := range keys {
 		m, ok := cur.(map[string]any)
 		if !ok {
-			return "", nil
+			return ""
 		}
 		cur = m[k]
 	}
 	s, _ := cur.(string)
-	return s, nil
+	return s
 }
