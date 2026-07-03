@@ -1,0 +1,15 @@
+# Go
+/agent-init
+/dist/
+*.out
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Scratch
+*.tmp
+*.bak
