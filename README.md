@@ -1,7 +1,7 @@
 # agent-init
 
 Interactive Go CLI to generate `agent.json` identity cards against the
-[reflectt/agent-identity-kit](https://github.com/reflectt/agent-identity-kit)
+[NovaLux12/agent-identity-kit](https://github.com/NovaLux12/agent-identity-kit)
 v1 schema. The "create" half of the create-and-validate pair
 ([`agent-validate`](../agent-validate) is the "check" half).
 
@@ -27,7 +27,7 @@ Next steps:
 
 ## Why this exists
 
-The upstream `reflectt/agent-identity-kit` ships `init.sh`, a bash
+The upstream `NovaLux12/agent-identity-kit` ships `init.sh`, a bash
 wrapper that prompts interactively and uses heredoc templating. It
 works but has the same downsides as the upstream `validate.sh` —
 needs a shell, can't be embedded in Go tooling, no flag-driven mode
@@ -183,7 +183,7 @@ explains why.
 - [`NovaLux12/agent-validate`](../agent-validate) — schema validator
 - [`NovaLux12/agentcard-mcp`](../agentcard-mcp) — MCP server over
   the same cards
-- [`reflectt/agent-identity-kit`](https://github.com/reflectt/agent-identity-kit)
+- [`NovaLux12/agent-identity-kit`](https://github.com/NovaLux12/agent-identity-kit)
   — the spec
 
 ## License
