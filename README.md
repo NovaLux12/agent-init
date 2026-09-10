@@ -160,23 +160,20 @@ printed to stderr. Common causes:
 
 ## Use as a library
 
-```go
-import "github.com/NovaLux12/agent-init"
+`agent-init` is a `package main` CLI and cannot be imported. To
+generate cards programmatically, shell out to the binary or vendor
+the generation logic into your own package. For validation from Go,
+import the library this tool validates with:
 
-body, err := agentinit.Generate(ctx, agentinit.Options{
-    AgentName:        "My Agent",
-    AgentHandle:      "@me@example.com",
-    AgentDescription: "What this agent does.",
-    OwnerName:        "My Org",
-    Capabilities:     []string{"code-generation"},
-})
+```go
+import "github.com/NovaLux12/agent-validate/pkg/agentvalidate"
+
+results, err := agentvalidate.Validate(ctx, data) // schema
+warnings := agentvalidate.Lint(data)             // advisory
 ```
 
-The `Generate` function returns the marshaled card bytes (with a
-trailing newline) and validates via
-[`agent-validate`](https://github.com/NovaLux12/agent-validate) before
-returning. If validation fails, no bytes are returned and the error
-explains why.
+See [`agent-validate`](https://github.com/NovaLux12/agent-validate)
+for the full Go API.
 
 ## Related
 
