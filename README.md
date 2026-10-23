@@ -33,9 +33,10 @@ works but has the same downsides as the upstream `validate.sh` —
 needs a shell, can't be embedded in Go tooling, no flag-driven mode
 for CI.
 
-`agent-init` is the same job in a single ~10 MB static binary with
-no runtime dependencies. It also **validates the output as it
-writes**, so you can't accidentally publish an invalid card —
+`agent-init` is the same job in a single self-contained binary — ~6.8 MB
+for the `linux/amd64` release — with no external runtime dependencies. The
+`linux` builds are dynamically linked against glibc. It also **validates the
+output as it writes**, so you can't accidentally publish an invalid card —
 the file is only written if it passes schema validation.
 
 ## Install
@@ -46,6 +47,20 @@ go install github.com/NovaLux12/agent-init@latest
 
 Or grab a binary from
 [Releases](https://github.com/NovaLux12/agent-init/releases).
+
+### Dependencies
+
+The Go module dependencies are compiled into the binary; nothing else is
+needed at runtime:
+
+| module | why |
+| --- | --- |
+| `github.com/NovaLux12/agent-validate` | schema validation and linting; the v1–v1.3 schemas are embedded in that module (`go:embed`), so generation and validation work offline |
+| `github.com/qri-io/jsonschema` | pulled in transitively by `agent-validate` |
+
+The published `linux` assets are dynamically linked against glibc (the build
+does not set `CGO_ENABLED=0`); `darwin` assets link the system `libSystem`.
+Set `CGO_ENABLED=0` at build time to get a fully static binary.
 
 ## Usage
 
