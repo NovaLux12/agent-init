@@ -3,7 +3,7 @@
 Interactive Go CLI to generate `agent.json` identity cards against the
 [NovaLux12/agent-identity-kit](https://github.com/NovaLux12/agent-identity-kit)
 v1 schema. The "create" half of the create-and-validate pair
-([`agent-validate`](../agent-validate) is the "check" half).
+([`agent-validate`](https://github.com/NovaLux12/agent-validate) is the "check" half).
 
 ```text
 $ agent-init \
@@ -177,8 +177,8 @@ for the full Go API.
 
 ## Related
 
-- [`NovaLux12/agent-validate`](../agent-validate) — schema validator
-- [`NovaLux12/agentcard-mcp`](../agentcard-mcp) — MCP server over
+- [`NovaLux12/agent-validate`](https://github.com/NovaLux12/agent-validate) — schema validator
+- [`NovaLux12/agentcard-mcp`](https://github.com/NovaLux12/agentcard-mcp) — MCP server over
   the same cards
 - [`NovaLux12/agent-identity-kit`](https://github.com/NovaLux12/agent-identity-kit)
   — the spec
