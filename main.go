@@ -38,9 +38,14 @@ import (
 	"github.com/NovaLux12/agent-validate/pkg/agentvalidate"
 )
 
-// Version is the agent-init release tag. Bump in lockstep with
-// CHANGELOG.md and README install snippets.
-const Version = "0.1.0"
+// Version is the agent-init release tag, printed by --version. The release
+// build overrides it with -X, so a tag cut from this tree cannot misreport
+// itself; the literal is the dev default and what `go run` reports.
+//
+// It drifted once: v0.1.1 shipped with this still at "0.1.0" because the
+// release workflow passed no -X at all, so every v0.1.1 binary answered
+// `agent-init 0.1.0`. Stamping at build time removes the class.
+var Version = "0.1.1"
 
 // FlagCapturer lets the generator use injected flag values for
 // testing without going through os.Args. The default is real os.Args.

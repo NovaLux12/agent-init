@@ -27,7 +27,7 @@ jobs:
           CGO_ENABLED: 0
         run: |
           mkdir -p dist
-          LDFLAGS="-s -w"
+          LDFLAGS="-s -w -X main.Version=${GITHUB_REF_NAME}"
           GOOS=linux  GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o dist/agent-init_linux_amd64   .
           GOOS=linux  GOARCH=arm64 CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o dist/agent-init_linux_arm64   .
           GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$LDFLAGS" -o dist/agent-init_darwin_amd64  .
